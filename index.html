@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ScootMod</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
 <body>
 <style>
@@ -206,6 +208,12 @@
 
   .empty-state { text-align: center; padding: 32px 16px; color: var(--fg-dim); font-size: 13px; }
   .empty-ico { font-size: 32px; margin-bottom: 8px; }
+  .mb12 { margin-bottom: 12px; }
+  #mapContainer .leaflet-control-attribution { font-size: 8px; }
+  .route-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+  .route-info { min-width: 0; }
+  .route-date { font-family: var(--font-display); font-size: 13px; font-weight: 600; }
+  .route-meta { font-size: 11px; color: var(--fg-dim); }
 
   /* Toast */
   .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 20px; border-radius: 10px; font-family: var(--font-display); font-size: 13px; font-weight: 600; z-index: 100; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
@@ -233,6 +241,7 @@
     <button class="nav-btn" data-tab="battery">Батарея</button>
     <button class="nav-btn" data-tab="trip">Поездка</button>
     <button class="nav-btn" data-tab="diag">Диагн.</button>
+    <button class="nav-btn" data-tab="map">Карта</button>
     <button class="nav-btn" data-tab="profiles">Профили</button>
   </nav>
 
@@ -413,6 +422,25 @@
     <div class="sec-title">Лог BLE</div>
     <div class="log-box" id="logBox"><div><span class="log-info">Готов</span></div></div>
     <button class="btn btn-outline btn-sm mt8 mb16" id="clearLog">Очистить лог</button>
+  </div>
+
+  <!-- ═══ MAP ═══ -->
+  <div class="tab-content" id="tab-map">
+    <div class="sec-title">GPS-трекинг</div>
+    <div id="mapContainer" style="width:100%;height:300px;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin-bottom:12px;background:var(--surface)"></div>
+    <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">
+      <div class="stat"><div class="stat-val" id="mapSpd">0</div><div class="stat-lbl">км/ч</div></div>
+      <div class="stat"><div class="stat-val" id="mapDist">0.0</div><div class="stat-lbl">км</div></div>
+      <div class="stat"><div class="stat-val" id="mapAlt">--</div><div class="stat-lbl">высота, м</div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-primary btn-sm" id="mapStart" style="flex:1">Начать запись</button>
+      <button class="btn btn-danger btn-sm" id="mapStop" style="flex:1" disabled>Стоп</button>
+      <button class="btn btn-outline btn-sm" id="mapCenter" style="flex:0 0 auto">Центр</button>
+    </div>
+    <div class="tog-row mb12"><div class="tog-info"><span class="tog-label">Следить за позицией</span><span class="tog-desc">Карта двигается за тобой</span></div><label class="tog"><input type="checkbox" id="mapFollow" checked><span class="tog-track"></span></label></div>
+    <div class="sec-title">Записанные маршруты</div>
+    <div id="routeList"><div class="empty-state"><div class="empty-ico">🗺️</div>Нет записанных маршрутов</div></div>
   </div>
 
   <!-- ═══ PROFILES ═══ -->
@@ -950,6 +978,111 @@
   const d=PROTO[brand].defs;
   $('sMaxSpd').max=d.spdLimit;$('sMaxSpd').value=d.maxSpd;$('vMaxSpd').textContent=d.maxSpd+' '+spdU();
   setGauge(0);drawChart();renderProfiles();renderTrips();updMaint();
+  window.addEventListener('resize',drawChart);
+
+  /* ── MAP ── */
+  let map=null, mapMarker=null, mapPath=null, mapWatchId=null;
+  let recording=false, routeCoords=[], routeDist=0, lastPos=null;
+  let savedRoutes=[];
+  try{savedRoutes=JSON.parse(localStorage.getItem('sm_routes'))||[]}catch(e){}
+
+  function initMap(){
+    if(map)return;
+    map=L.map('mapContainer',{zoomControl:false}).setView([55.75,37.62],14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'OSM',maxZoom:19
+    }).addTo(map);
+    L.control.zoom({position:'topright'}).addTo(map);
+    mapPath=L.polyline([],{color:'#3b82f6',weight:4,opacity:0.8}).addTo(map);
+    startGPS();
+  }
+
+  function startGPS(){
+    if(!navigator.geolocation)return;
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const ll=[pos.coords.latitude,pos.coords.longitude];
+      map.setView(ll,16);
+      mapMarker=L.circleMarker(ll,{radius:8,fillColor:'#3b82f6',fillOpacity:1,color:'#fff',weight:3}).addTo(map);
+    },()=>{},{enableHighAccuracy:true});
+
+    mapWatchId=navigator.geolocation.watchPosition(pos=>{
+      const ll=[pos.coords.latitude,pos.coords.longitude];
+      if(mapMarker)mapMarker.setLatLng(ll); else mapMarker=L.circleMarker(ll,{radius:8,fillColor:'#3b82f6',fillOpacity:1,color:'#fff',weight:3}).addTo(map);
+      if($('mapFollow').checked)map.panTo(ll);
+      if(pos.coords.speed!=null&&pos.coords.speed>=0)$('mapSpd').textContent=Math.round(pos.coords.speed*3.6);
+      if(pos.coords.altitude!=null)$('mapAlt').textContent=Math.round(pos.coords.altitude);
+      if(recording){
+        routeCoords.push(ll);
+        mapPath.addLatLng(ll);
+        if(lastPos){
+          routeDist+=haversine(lastPos[0],lastPos[1],ll[0],ll[1]);
+          $('mapDist').textContent=routeDist.toFixed(2);
+        }
+        lastPos=ll;
+      }
+    },()=>{},{enableHighAccuracy:true,maximumAge:1000,timeout:10000});
+  }
+
+  function haversine(a1,o1,a2,o2){
+    const R=6371,dLat=(a2-a1)*Math.PI/180,dLon=(o2-o1)*Math.PI/180;
+    const a=Math.sin(dLat/2)**2+Math.cos(a1*Math.PI/180)*Math.cos(a2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+
+  $('mapStart').addEventListener('click',()=>{
+    recording=true;routeCoords=[];routeDist=0;lastPos=null;
+    mapPath.setLatLngs([]);
+    $('mapDist').textContent='0.0';
+    $('mapStart').disabled=true;$('mapStop').disabled=false;
+    toast('Запись маршрута...');
+  });
+
+  $('mapStop').addEventListener('click',()=>{
+    recording=false;
+    $('mapStart').disabled=false;$('mapStop').disabled=true;
+    if(routeCoords.length>1){
+      savedRoutes.unshift({date:new Date().toLocaleDateString('ru'),dist:routeDist.toFixed(2),points:routeCoords.length,coords:routeCoords});
+      if(savedRoutes.length>20)savedRoutes.length=20;
+      try{localStorage.setItem('sm_routes',JSON.stringify(savedRoutes))}catch(e){}
+      renderRoutes();
+      toast('Маршрут сохранён');
+    }
+  });
+
+  $('mapCenter').addEventListener('click',()=>{
+    if(mapMarker)map.setView(mapMarker.getLatLng(),16);
+  });
+
+  function renderRoutes(){
+    const el=$('routeList');
+    if(!savedRoutes.length){el.innerHTML='<div class="empty-state"><div class="empty-ico">🗺️</div>Нет записанных маршрутов</div>';return}
+    el.innerHTML=savedRoutes.map((r,i)=>`<div class="route-card">
+      <div class="route-info"><div class="route-date">${r.date}</div><div class="route-meta">${r.dist} км · ${r.points} точек</div></div>
+      <div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" onclick="showRoute(${i})">На карте</button><button class="btn btn-danger btn-sm" onclick="delRoute(${i})">✕</button></div>
+    </div>`).join('');
+  }
+
+  window.showRoute=function(i){
+    const r=savedRoutes[i];if(!r||!r.coords.length)return;
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    document.querySelector('[data-tab="map"]').classList.add('active');
+    $('tab-map').classList.add('active');
+    setTimeout(()=>{
+      if(!map)initMap(); else map.invalidateSize();
+      mapPath.setLatLngs(r.coords);
+      map.fitBounds(mapPath.getBounds(),{padding:[30,30]});
+    },100);
+  };
+
+  window.delRoute=function(i){savedRoutes.splice(i,1);try{localStorage.setItem('sm_routes',JSON.stringify(savedRoutes))}catch(e){}renderRoutes();toast('Удалено')};
+
+  // Init map when tab is opened
+  document.querySelector('[data-tab="map"]').addEventListener('click',()=>{
+    setTimeout(()=>{if(!map)initMap();else map.invalidateSize()},100);
+  });
+
+  renderRoutes();
   window.addEventListener('resize',drawChart);
 })();
 </script>
