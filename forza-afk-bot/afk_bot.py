@@ -29,7 +29,8 @@ DEFAULTS = {
     "input": "gamepad",
     "window_title": "Forza Horizon",
     "require_focus": True,
-    "start_delay": 5,
+    "start_paused": True,
+    "start_delay": 1,
     "max_cycles": 0,
     "max_minutes": 0,
 }
@@ -334,12 +335,20 @@ class Runner:
         self.check_focus = check_focus
         self.window = cfg["window_title"].lower()
         self.pause_key = cfg["hotkeys"]["pause"]
+        self.pause_reason = f"пауза — нажмите {self.pause_key}, чтобы продолжить"
         self.vk_pause = hotkey_vk(cfg["hotkeys"]["pause"])
         self.vk_stop = hotkey_vk(cfg["hotkeys"]["stop"])
         self.was_down: dict[int, bool] = {}
 
-    def run(self, steps: list[dict], start_delay: float, max_cycles: int, max_minutes: float) -> None:
-        log(f"старт через {start_delay} с — переключитесь в окно игры")
+    def run(self, steps: list[dict], start_delay: float, start_paused: bool,
+            max_cycles: int, max_minutes: float) -> None:
+        if start_paused and self.use_hotkeys:
+            # Ничего не жмём, пока игрок не откроет заезд и не нажмёт клавишу паузы.
+            self.paused = True
+            self.pause_reason = (f"откройте экран старта заезда и нажмите {self.pause_key} в игре — "
+                                 f"бот начнёт через {start_delay} с")
+        else:
+            log(f"старт через {start_delay} с — переключитесь в окно игры")
         self.sleep(start_delay)
         started = time.monotonic()
         n = 0
@@ -414,8 +423,9 @@ class Runner:
                 raise StopBot("остановлено горячей клавишей")
             if self._pressed(self.vk_pause):
                 self.paused = not self.paused
+                self.pause_reason = f"пауза — нажмите {self.pause_key}, чтобы продолжить"
         if self.paused:
-            return f"пауза — нажмите {self.pause_key}, чтобы продолжить"
+            return self.pause_reason
         if self.check_focus and self.window not in foreground_window_title().lower():
             return "окно игры не активно — кнопки отпущены, жду"
         return None
@@ -457,7 +467,7 @@ def main() -> None:
     if IS_WINDOWS:
         log(f"{cfg['hotkeys']['pause']} — пауза/продолжить, {cfg['hotkeys']['stop']} — стоп")
     try:
-        runner.run(steps, cfg["start_delay"], cfg["max_cycles"], cfg["max_minutes"])
+        runner.run(steps, cfg["start_delay"], cfg["start_paused"], cfg["max_cycles"], cfg["max_minutes"])
     except StopBot as e:
         log(f"стоп: {e}")
     except KeyboardInterrupt:
