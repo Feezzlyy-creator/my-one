@@ -1,0 +1,81 @@
+# Настройки AFK-бота для Forza Horizon 6.
+# После правки просто перезапустите бота.
+
+# Чем «нажимать»:
+#   "gamepad"  — виртуальный геймпад Xbox (нужен vgamepad, см. README), аналоговые газ и руль
+#   "keyboard" — клавиатура, ничего ставить не нужно
+input = "gamepad"
+
+# Часть заголовка окна игры. Если активно другое окно, бот отпускает
+# все кнопки и ждёт — так он не будет «жать» в браузер или Discord.
+window_title = "Forza Horizon"
+require_focus = true
+
+start_delay = 5   # секунд до старта, чтобы успеть переключиться в игру
+max_cycles = 0    # сколько раз пройти сценарий (0 — без ограничения)
+max_minutes = 0   # остановиться через N минут (0 — без ограничения)
+
+[hotkeys]         # F1–F12
+pause = "F8"      # пауза / продолжить
+stop = "F10"      # остановить бота
+
+# Клавиши для input = "keyboard" — должны совпадать с управлением в игре.
+# Доступны: буквы, цифры, enter esc backspace tab space shift ctrl alt up down left right
+[keyboard]
+throttle = "w"
+brake = "s"
+steer_left = "a"
+steer_right = "d"
+A = "enter"
+B = "backspace"
+X = "x"
+Y = "y"
+START = "esc"
+BACK = "tab"
+DPAD_UP = "up"
+DPAD_DOWN = "down"
+DPAD_LEFT = "left"
+DPAD_RIGHT = "right"
+
+# ── Сценарий ─────────────────────────────────────────────────────────────────
+# Шаги выполняются сверху вниз и повторяются по кругу.
+#
+#   action = "drive" — ехать duration секунд:
+#                      throttle = газ (0..1), brake = тормоз (0..1),
+#                      steer = руль (-1 влево … 1 вправо, 0 — прямо),
+#                      hold = ["RB"] — дополнительно держать кнопки
+#   action = "press" — нажать button count раз с паузой interval секунд
+#                      (hold_time — сколько держать кнопку, по умолчанию 0.15)
+#   action = "wait"  — просто подождать duration секунд
+#   note = "..."     — подпись шага в логе (необязательно)
+#
+# Кнопки: A B X Y LB RB START BACK LS RS DPAD_UP DPAD_DOWN DPAD_LEFT DPAD_RIGHT
+#
+# Ниже пример для AFK-трассы: держим газ всю гонку, потом прокликиваем
+# экраны результатов и запускаем заезд заново. Длительность гонки и
+# последовательность кнопок обязательно сверьте с одним заездом вручную —
+# как это сделать, написано в README.
+
+[[cycle]]
+note = "гонка"
+action = "drive"
+throttle = 1.0
+steer = 0.0
+duration = 300
+
+[[cycle]]
+note = "финиш, ждём экран результатов"
+action = "wait"
+duration = 8
+
+[[cycle]]
+note = "пролистываем результаты и награды"
+action = "press"
+button = "A"
+count = 4
+interval = 2.5
+
+[[cycle]]
+note = "загрузка нового заезда"
+action = "wait"
+duration = 15
