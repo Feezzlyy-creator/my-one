@@ -180,8 +180,9 @@ class GamepadBackend:
         try:
             import vgamepad as vg
         except ImportError:
-            fail("не установлен vgamepad — выполните: pip install -r requirements.txt\n"
-                 "или переключитесь на клавиатуру: input = \"keyboard\" в config.toml")
+            fail("не установлен vgamepad — запустите start.bat (он поставит его сам)\n"
+                 "или выполните: python -m pip install -r requirements.txt\n"
+                 "Можно и без него: input = \"keyboard\" в config.toml")
         b = vg.XUSB_BUTTON
         self.buttons = {
             "A": b.XUSB_GAMEPAD_A, "B": b.XUSB_GAMEPAD_B, "X": b.XUSB_GAMEPAD_X, "Y": b.XUSB_GAMEPAD_Y,
